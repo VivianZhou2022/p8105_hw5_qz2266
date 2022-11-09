@@ -5,25 +5,32 @@ date: "2022-11-09"
 output: github_document
 ---
 
+
 ```{r packages}
 library(tidyverse)
 ```
 
+
+### Problem 2
 ```{r read_data}
 homicide_df = read.csv("data/homicide-data.csv") 
 ```
 
-```{r}
-#create a city_state variable
-homicide = transform(homicide_df, reported_date = as.Date(as.character(reported_date), "%Y%m%d")) %>%        #change date format
-mutate(city_state = str_c(city, state, sep = ", "))     
+```{r tidy}
+# change date format
+homicide = transform(homicide_df, reported_date = as.Date(as.character(reported_date), "%Y%m%d")) %>%   
+  
+# create a city_state variable
+  mutate(city_state = str_c(city, state, sep = ", "))     
 ```
 
 This dataset contains information about `r nrow(homicide)` homicides in `r nrow(homicide %>% distinct(city_state))` U.S. cities in `r nrow(homicide %>% distinct(state))` states reported from 2007 to 2017. In each homicide, the victim's name, rage, age, and sex are reported, as well as the disposition for each case.
 
 Note: There are two cities with the name of Tulsa. However, "Tulsa, AL" has only one data included. It's possible a mistake in data entry. Moreover, I checked online but couldn't find a city called Tulsa in Alabama. If it's a typo, then there are only 50 cities in this dataset.
 
-```{r}
+
+#### Summary of the total number of homicides and the number of unsolved homicides within cities
+```{r classify}
 homicide_sum = 
 homicide %>%
 mutate(
@@ -33,10 +40,13 @@ mutate(
       disposition == "Closed by arrest"      ~ "solved",
     )
   ) %>% 
-  select(city_state, solution) 
+ select(city_state, solution) %>% 
+  
+ # filter out the city of Tulsa_AL
+ filter(city_state != "Tulsa, AL")   
 ```
 
-```{r}
+```{r summerize}
 disposition_city = 
   homicide_sum %>% 
   group_by(city_state) %>% 
@@ -45,8 +55,8 @@ disposition_city =
     homi_unsolved = sum(solution == "unsolved"))
 ```
 
-### Prop test for Baltimore, MD
 
+#### Prop.test for Baltimore, MD
 ```{r}
 baltimore_prop = prop.test(
   disposition_city %>% filter(city_state == "Baltimore, MD") %>% pull(homi_unsolved), 
@@ -60,3 +70,33 @@ tibble(estimate = baltimore_prop %>% pull(estimate),
        conf.low = baltimore_prop %>% pull(conf.low),
        conf.high = baltimore_prop %>% pull(conf.high))
 ```
+
+
+#### Prop.test for all cities
+```{r}
+city_prop = 
+  disposition_city %>% 
+  mutate(
+    prop_result = map2(.x = homi_unsolved, .y = homi_total, ~prop.test(x = .x, n = .y)),
+    tidy_result = map(.x = prop_result, ~broom::tidy(.x))
+  ) %>% 
+  select(-prop_result) %>% 
+  unnest(tidy_result) %>% 
+  select(city_state, estimate, conf.low, conf.high)
+```
+
+
+#### Create a plot that shows the estimates and CIs for each city
+```{r}
+city_prop %>% 
+  mutate(city_state = factor(city_state)) %>% 
+  mutate(city_state = forcats::fct_reorder(city_state, estimate)) %>% 
+  
+  ggplot(aes(x = city_state, y = estimate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) +
+  ggthemes::theme_fivethirtyeight() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = rel(0.8))) +
+  labs(title = "Proportion of Unsolved Homicides within Cities")
+```
+
