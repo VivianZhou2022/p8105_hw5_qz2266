@@ -5,4 +5,58 @@ date: "2022-11-09"
 output: github_document
 ---
 
+```{r packages}
+library(tidyverse)
+```
 
+```{r read_data}
+homicide_df = read.csv("data/homicide-data.csv") 
+```
+
+```{r}
+#create a city_state variable
+homicide = transform(homicide_df, reported_date = as.Date(as.character(reported_date), "%Y%m%d")) %>%        #change date format
+mutate(city_state = str_c(city, state, sep = ", "))     
+```
+
+This dataset contains information about `r nrow(homicide)` homicides in `r nrow(homicide %>% distinct(city_state))` U.S. cities in `r nrow(homicide %>% distinct(state))` states reported from 2007 to 2017. In each homicide, the victim's name, rage, age, and sex are reported, as well as the disposition for each case.
+
+Note: There are two cities with the name of Tulsa. However, "Tulsa, AL" has only one data included. It's possible a mistake in data entry. Moreover, I checked online but couldn't find a city called Tulsa in Alabama. If it's a typo, then there are only 50 cities in this dataset.
+
+```{r}
+homicide_sum = 
+homicide %>%
+mutate(
+    solution = case_when(
+      disposition == "Closed without arrest" ~ "unsolved",
+      disposition == "Open/No arrest"        ~ "unsolved",
+      disposition == "Closed by arrest"      ~ "solved",
+    )
+  ) %>% 
+  select(city_state, solution) 
+```
+
+```{r}
+disposition_city = 
+  homicide_sum %>% 
+  group_by(city_state) %>% 
+  summarize(
+    homi_total = n(),
+    homi_unsolved = sum(solution == "unsolved"))
+```
+
+### Prop test for Baltimore, MD
+
+```{r}
+baltimore_prop = prop.test(
+  disposition_city %>% filter(city_state == "Baltimore, MD") %>% pull(homi_unsolved), 
+  disposition_city %>% filter(city_state == "Baltimore, MD") %>% pull(homi_total)) %>% 
+  broom::tidy()
+```
+
+```{r}
+# pull the estimated proportion and confidence intervals from the tidy dataframe.
+tibble(estimate = baltimore_prop %>% pull(estimate),
+       conf.low = baltimore_prop %>% pull(conf.low),
+       conf.high = baltimore_prop %>% pull(conf.high))
+```
